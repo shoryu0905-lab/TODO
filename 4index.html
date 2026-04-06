@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>究極・学習ToDoアプリ Pro</title>
+  <style>
+    :root { --primary: #4f46e5; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --accent: #10b981; }
+    body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 0; padding-bottom: 90px; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .card { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    
+    /* タイムライン専用スタイル */
+    .timeline { border-left: 2px solid #e2e8f0; margin-left: 50px; padding-left: 20px; position: relative; }
+    .timeline-item { position: relative; margin-bottom: 25px; min-height: 50px; }
+    .timeline-item::before { content: ""; position: absolute; left: -27px; top: 12px; width: 12px; height: 12px; border-radius: 50%; background: var(--primary); border: 2px solid #fff; z-index: 1; }
+    .timeline-time { position: absolute; left: -75px; top: 8px; font-size: 0.85rem; font-weight: bold; color: var(--primary); width: 45px; text-align: right; }
+
+    /* タイマー */
+    .btn-timer { background: var(--accent); color: white; border: none; padding: 6px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; font-weight: bold; }
+    .btn-timer.stop { background: #ef4444; }
+
+    .progress-container { background: #e2e8f0; border-radius: 10px; height: 12px; margin: 15px 0; overflow: hidden; }
+    .progress-bar { background: linear-gradient(90deg, #4f46e5, #818cf8); height: 100%; width: 0%; transition: width 0.5s ease; }
+    
+    .task-card { display: flex; flex-direction: column; padding: 12px; border-radius: 10px; background: #fff; border: 1px solid #e2e8f0; transition: transform 0.1s; }
+    .task-card:active { transform: scale(0.98); }
+    .task-card__main { display: flex; align-items: center; gap: 10px; }
+    .task-card__meta { margin-left: 28px; font-size: 0.8rem; color: #64748b; margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .badge { padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; background: #eef2ff; color: #4f46e5; font-weight: bold; }
+    
+    .button { cursor: pointer; padding: 12px; border-radius: 8px; border: none; background: var(--primary); color: white; font-weight: bold; font-size: 1rem; }
+    .form-group { margin-bottom: 15px; display: flex; flex-direction: column; }
+    .form-group label { font-size: 0.9rem; margin-bottom: 6px; font-weight: bold; color: #475569; }
+    .form-group input, .form-group select { padding: 12px; border: 1px solid #cbd5e0; border-radius: 8px; font-size: 1rem; }
+    
+    /* ナビゲーション */
+    nav { position: fixed; bottom: 0; width: 100%; background: #fff; display: flex; justify-content: space-around; padding: 12px 0; border-top: 1px solid #e2e8f0; z-index: 100; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); }
+    .nav-item { text-align: center; cursor: pointer; flex: 1; color: #94a3b8; transition: 0.2s; }
+    .nav-item div { font-size: 1.4rem; margin-bottom: 2px; }
+    .nav-item span { font-size: 0.65rem; font-weight: bold; }
+    .nav-item.active-nav { color: var(--primary); }
+
+    .page { display: none; animation: fadeIn 0.3s ease; }
+    .active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    #toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(30, 41, 59, 0.9); color: #fff; padding: 10px 20px; border-radius: 30px; opacity: 0; transition: 0.3s; pointer-events: none; z-index: 1000; font-size: 0.9rem; }
+    #toast.is-show { opacity: 1; top: 30px; }
+  </style>
+</head>
+<body>
+
+  <div style="background: #fff; padding: 10px 15px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; position: sticky; top:0; z-index:10;">
+    <div id="date-display" style="font-weight: 800; font-size: 1rem; color: var(--primary);"></div>
+    <div style="display: flex; gap: 5px;">
+      <input type="text" id="user-name" placeholder="名前" style="width: 70px; padding: 6px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.8rem;">
+      <button id="login-button" class="button" style="padding: 6px 12px; font-size: 0.75rem;">切替</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div id="top-page" class="page active">
+      <h2 style="margin-top:0;">👋 <span id="display-user">ゲスト</span>さん</h2>
+      
+      <div class="card" style="text-align: center; padding: 25px 15px;">
+        <h3 style="margin:0 0 15px 0; color: #64748b; font-size: 0.9rem;">今日の総学習時間</h3>
+        <div id="record-stats" style="font-size: 2.5rem; font-weight: 800; color: var(--accent);">0<span style="font-size: 1rem; margin-left: 4px;">分</span></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 10px 0; font-size: 1rem;">🎯 達成度</h3>
+        <div id="stats-display" style="font-size: 0.85rem; color: #64748b; margin-bottom: 8px;"></div>
+        <div class="progress-container"><div id="progress-bar" class="progress-bar"></div></div>
+      </div>
+      
+      <div class="card" onclick="showPage('timeline-page')" style="cursor:pointer; background: #eef2ff; border: 1px solid #c7d2fe;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-weight: bold; color: var(--primary);">タイムラインを確認する</span>
+          <span>→</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="timeline-page" class="page">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 style="margin:0;">⏳ タイムライン</h2>
+        <button class="button" style="padding: 5px 15px; font-size: 0.8rem;" onclick="showPage('add-page')">+ 追加</button>
+      </div>
+      <div class="card">
+        <div id="timeline-container" class="timeline"></div>
+      </div>
+    </div>
+
+    <div id="add-page" class="page">
+      <h2>🆕 タスク追加</h2>
+      <form id="task-form" class="card">
+        <div class="form-group"><label>タスク名</label><input type="text" id="task-title" required placeholder="例: 英単語 100個"></div>
+        <div class="form-group"><label>教科</label><input type="text" id="task-subject" list="subject-list" placeholder="例: 英語"><datalist id="subject-list"></datalist></div>
+        <div class="form-group"><label>開始予定時刻</label><input type="time" id="task-start-time" value="09:00"></div>
+        <div class="form-group"><label>目標時間 (分)</label><input type="number" id="task-estimate" value="30"></div>
+        <div class="form-group">
+          <label>優先度</label>
+          <select id="task-priority">
+            <option value="low">低</option>
+            <option value="medium" selected>中</option>
+            <option value="high">高</option>
+          </select>
+        </div>
+        <button type="submit" class="button" style="width: 100%; margin-top: 10px;">タイムラインにセット</button>
+      </form>
+    </div>
+
+    <div id="list-page" class="page">
+      <h2>📋 全タスク一覧</h2>
+      <div class="card">
+        <input type="text" id="task-search" placeholder="キーワード検索..." style="width: 93%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 8px;">
+        <select id="filter-subject" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px;">
+          <option value="">すべての教科</option>
+        </select>
+      </div>
+      <ul id="all-task-list" style="list-style: none; padding: 0;"></ul>
+    </div>
+  </div>
+
+  <nav>
+    <div class="nav-item active-nav" onclick="showPage('top-page')"><div>🏠</div><span>トップ</span></div>
+    <div class="nav-item" onclick="showPage('timeline-page')"><div>⏳</div><span>24h</span></div>
+    <div class="nav-item" onclick="showPage('add-page')"><div>➕</div><span>追加</span></div>
+    <div class="nav-item" onclick="showPage('list-page')"><div>📋</div><span>一覧</span></div>
+  </nav>
+
+  <div id="toast"></div>
+
+  <script>
+    const STORAGE_KEY = "studyTodo_v5";
+    let appState = { currentUser: "default", tasks: [], allSubjects: [] };
+    let activeTimerId = null;
+    let timerInterval = null;
+
+    function initApp() {
+      const now = new Date();
+      document.getElementById("date-display").textContent = `${now.getMonth()+1}月${now.getDate()}日`;
+      loadData();
+      bindEvents();
+      renderAll();
+    }
+
+    function bindEvents() {
+      document.getElementById("login-button").addEventListener("click", () => {
+        const name = document.getElementById("user-name").value.trim();
+        if(name) { appState.currentUser = name; loadData(); renderAll(); showToast(`${name}さんに切替`); }
+      });
+
+      document.getElementById("task-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const subject = document.getElementById("task-subject").value;
+        if (subject && !appState.allSubjects.includes(subject)) appState.allSubjects.push(subject);
+
+        appState.tasks.push({
+          id: Date.now().toString(),
+          title: document.getElementById("task-title").value,
+          subject,
+          startTime: document.getElementById("task-start-time").value,
+          estimate: parseInt(document.getElementById("task-estimate").value) || 0,
+          actualTime: 0,
+          priority: document.getElementById("task-priority").value,
+          status: "todo"
+        });
+        saveData(); renderAll(); e.target.reset(); showPage('timeline-page'); showToast("タイムラインに追加しました");
+      });
+
+      document.getElementById("task-search").addEventListener("input", renderListPage);
+      document.getElementById("filter-subject").addEventListener("change", renderListPage);
+    }
+
+    function loadData() {
+      const suffix = appState.currentUser;
+      const t = localStorage.getItem(`${STORAGE_KEY}_tasks_${suffix}`);
+      const s = localStorage.getItem(`${STORAGE_KEY}_subs_${suffix}`);
+      appState.tasks = t ? JSON.parse(t) : [];
+      appState.allSubjects = s ? JSON.parse(s) : [];
+      document.getElementById("display-user").textContent = appState.currentUser;
+      document.getElementById("user-name").value = appState.currentUser;
+    }
+
+    function saveData() {
+      const suffix = appState.currentUser;
+      localStorage.setItem(`${STORAGE_KEY}_tasks_${suffix}`, JSON.stringify(appState.tasks));
+      localStorage.setItem(`${STORAGE_KEY}_subs_${suffix}`, JSON.stringify(appState.allSubjects));
+    }
+
+    function renderAll() {
+      renderStats();
+      renderTimeline();
+      renderListPage();
+      updateSubjectLists();
+    }
+
+    function renderStats() {
+      const done = appState.tasks.filter(t => t.status === "done").length;
+      const total = appState.tasks.length;
+      const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+      const totalActual = appState.tasks.reduce((sum, t) => sum + (t.actualTime || 0), 0);
+
+      document.getElementById("stats-display").textContent = `完了 ${done} / 全体 ${total} (${percent}%)`;
+      document.getElementById("progress-bar").style.width = `${percent}%`;
+      document.getElementById("record-stats").innerHTML = `${totalActual}<span style="font-size: 1rem; margin-left: 4px;">分</span>`;
+    }
+
+    function renderTimeline() {
+      const container = document.getElementById("timeline-container");
+      const sortedTasks = [...appState.tasks].sort((a, b) => a.startTime.localeCompare(b.startTime));
+      
+      if (sortedTasks.length === 0) {
+        container.innerHTML = "<p style='color:#94a3b8; font-size:0.85rem; text-align:center; padding:20px 0;'>予定がありません。<br>タスクを追加して一日を可視化しましょう！</p>";
+        return;
+      }
+
+      container.innerHTML = sortedTasks.map(t => `
+        <div class="timeline-item">
+          <span class="timeline-time">${t.startTime}</span>
+          <div class="task-card" style="border-left:6px solid ${getPriorityColor(t.priority)}">
+            <div class="task-card__main">
+              <input type="checkbox" style="width:18px; height:18px;" ${t.status === "done" ? "checked" : ""} onchange="toggleTask('${t.id}')">
+              <span style="${t.status === "done" ? 'text-decoration:line-through;opacity:0.4' : 'font-weight:bold'}">${escapeHtml(t.title)}</span>
+            </div>
+            <div class="task-card__meta">
+              <span class="badge">${escapeHtml(t.subject || "共通")}</span>
+              <span>目:${t.estimate}分</span>
+              <span style="color:var(--accent); font-weight:bold;">実:${t.actualTime}分</span>
+              <button class="btn-timer ${activeTimerId === t.id ? 'stop' : ''}" onclick="toggleTimer('${t.id}')">
+                ${activeTimerId === t.id ? '⏹️ 停止' : '▶️ 開始'}
+              </button>
+            </div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function renderListPage() {
+      const keyword = document.getElementById("task-search").value.toLowerCase();
+      const selSub = document.getElementById("filter-subject").value;
+      const filtered = appState.tasks.filter(t => 
+        t.title.toLowerCase().includes(keyword) && (selSub === "" || t.subject === selSub)
+      );
+      document.getElementById("all-task-list").innerHTML = filtered.map(t => `
+        <li class="task-card" style="margin-bottom:10px; border-left:5px solid ${getPriorityColor(t.priority)}">
+          <div class="task-card__main"><strong>${escapeHtml(t.title)}</strong></div>
+          <div class="task-card__meta">
+            <span class="badge">${t.subject || "なし"}</span> <span>${t.startTime}〜</span>
+            <span onclick="deleteTask('${t.id}')" style="color:#f87171; cursor:pointer; margin-left:auto; font-weight:bold;">削除</span>
+          </div>
+        </li>`).join("");
+    }
+
+    function toggleTimer(id) {
+      if (activeTimerId === id) {
+        clearInterval(timerInterval);
+        activeTimerId = null;
+        showToast("計測を停止しました");
+      } else {
+        if (activeTimerId) clearInterval(timerInterval);
+        activeTimerId = id;
+        timerInterval = setInterval(() => {
+          const task = appState.tasks.find(t => t.id === id);
+          if (task) {
+            task.actualTime = (task.actualTime || 0) + 1;
+            saveData();
+            renderAll();
+          }
+        }, 60000);
+        showToast("計測を開始しました（1分ごとに更新）");
+      }
+      renderAll();
+    }
+
+    function toggleTask(id) {
+      const task = appState.tasks.find(t => t.id === id);
+      if (task) {
+        task.status = task.status === "done" ? "todo" : "done";
+        saveData(); renderAll();
+      }
+    }
+
+    function deleteTask(id) {
+      if(confirm("このタスクを完全に削除しますか？")) {
+        if(activeTimerId === id) { clearInterval(timerInterval); activeTimerId = null; }
+        appState.tasks = appState.tasks.filter(t => t.id !== id);
+        saveData(); renderAll();
+      }
+    }
+
+    function getPriorityColor(p) {
+      return { high: "#ef4444", medium: "#fbbf24", low: "#10b981" }[p] || "#ccc";
+    }
+
+    function updateSubjectLists() {
+      const list = [...appState.allSubjects].sort();
+      document.getElementById("subject-list").innerHTML = list.map(s => `<option value="${s}">`).join("");
+      document.getElementById("filter-subject").innerHTML = '<option value="">すべての教科</option>' + list.map(s => `<option value="${s}">${s}</option>`).join("");
+    }
+
+    function showPage(id) {
+      document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+      document.getElementById(id).classList.add("active");
+      
+      const navItems = document.querySelectorAll(".nav-item");
+      navItems.forEach(n => n.classList.remove("active-nav"));
+      if(id==='top-page') navItems[0].classList.add("active-nav");
+      if(id==='timeline-page') navItems[1].classList.add("active-nav");
+      if(id==='add-page') navItems[2].classList.add("active-nav");
+      if(id==='list-page') navItems[3].classList.add("active-nav");
+      
+      window.scrollTo(0,0);
+    }
+
+    function showToast(m) {
+      const t = document.getElementById("toast");
+      t.textContent = m; t.classList.add("is-show");
+      setTimeout(() => t.classList.remove("is-show"), 2500);
+    }
+
+    function escapeHtml(s) {
+      if(!s) return "";
+      return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]));
+    }
+
+    initApp();
+  </script>
+</body>
+</html>
