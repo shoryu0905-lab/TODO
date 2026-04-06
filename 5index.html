@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>学習管理アプリ Pro Max</title>
+  <style>
+    :root { --primary: #4f46e5; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --accent: #10b981; --border: #e2e8f0; }
+    body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; padding-bottom: 90px; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .card { background: var(--card); border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid var(--border); }
+    
+    /* タイムライン表示 */
+    .timeline { border-left: 2px solid var(--border); margin-left: 50px; padding-left: 20px; position: relative; }
+    .timeline-item { position: relative; margin-bottom: 25px; min-height: 50px; }
+    .timeline-item::before { content: ""; position: absolute; left: -27px; top: 12px; width: 12px; height: 12px; border-radius: 50%; background: var(--primary); border: 2px solid #fff; z-index: 1; }
+    .timeline-time { position: absolute; left: -75px; top: 8px; font-size: 0.85rem; font-weight: bold; color: var(--primary); width: 45px; text-align: right; }
+
+    /* 各種ボタン */
+    .button { cursor: pointer; padding: 10px 15px; border-radius: 8px; border: none; background: var(--primary); color: white; font-weight: bold; }
+    .btn-timer { background: var(--accent); color: white; border: none; padding: 6px 10px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; }
+    .btn-timer.stop { background: #ef4444; }
+    .btn-add-today { background: #6366f1; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; text-decoration: none; display: inline-block; }
+
+    /* 達成度バー */
+    .progress-container { background: #e2e8f0; border-radius: 10px; height: 10px; margin: 15px 0; overflow: hidden; }
+    .progress-bar { background: linear-gradient(90deg, #4f46e5, #818cf8); height: 100%; width: 0%; transition: width 0.5s ease; }
+    
+    /* タスクカード */
+    .task-card { display: flex; flex-direction: column; padding: 12px; border-radius: 10px; background: #fff; border: 1px solid var(--border); margin-bottom: 10px; }
+    .task-card__main { display: flex; align-items: center; gap: 10px; }
+    .task-card__meta { margin-left: 28px; font-size: 0.8rem; color: #64748b; margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .badge { padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; background: #eef2ff; color: #4f46e5; font-weight: bold; }
+
+    /* ナビ */
+    nav { position: fixed; bottom: 0; width: 100%; background: #fff; display: flex; justify-content: space-around; padding: 10px 0; border-top: 1px solid var(--border); z-index: 100; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); }
+    .nav-item { text-align: center; cursor: pointer; flex: 1; color: #94a3b8; font-size: 0.7rem; }
+    .nav-item div { font-size: 1.5rem; }
+    .nav-item.active-nav { color: var(--primary); font-weight: bold; }
+
+    .page { display: none; }
+    .active { display: block; animation: fadeIn 0.3s; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    #toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: #1e293b; color: #fff; padding: 10px 20px; border-radius: 20px; opacity: 0; transition: 0.3s; z-index: 1000; font-size: 0.8rem; pointer-events: none; }
+    #toast.is-show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <div style="background:#fff; padding:10px 15px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee;">
+    <div id="date-display" style="font-weight:bold;"></div>
+    <div style="font-size:0.8rem;">👤 <span id="display-user"></span></div>
+  </div>
+
+  <div class="container">
+    <div id="top-page" class="page active">
+      <h2 style="margin-top:0;">学習サマリー</h2>
+      <div class="card" style="text-align: center;">
+        <div style="color: #64748b; font-size: 0.8rem;">今日の合計学習時間</div>
+        <div id="total-time-display" style="font-size: 2.5rem; font-weight: 800; color: var(--accent);">0<span style="font-size: 1rem;">分</span></div>
+      </div>
+      <div class="card">
+        <div id="stats-text" style="font-size: 0.8rem; margin-bottom: 5px;"></div>
+        <div class="progress-container"><div id="progress-bar" class="progress-bar"></div></div>
+      </div>
+    </div>
+
+    <div id="timeline-page" class="page">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+        <h2 style="margin:0;">⏳ 今日の予定</h2>
+        <button onclick="clearTodayTasks()" style="font-size:0.7rem; color:red; border:none; background:none; cursor:pointer;">全消去</button>
+      </div>
+      <div id="timeline-container" class="timeline"></div>
+    </div>
+
+    <div id="list-page" class="page">
+      <h2 style="margin-top:0;">📋 マイタスクリスト</h2>
+      <p style="font-size:0.75rem; color:#64748b;">よくやる勉強を登録しておき、＋ボタンで当日の予定に追加できます。</p>
+      
+      <form id="master-form" class="card" style="background:#f1f5f9; border:none;">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <input type="text" id="m-title" placeholder="タスク名" required style="grid-column: span 2; padding:8px; border-radius:5px; border:1px solid #ddd;">
+          <input type="text" id="m-subject" placeholder="教科" style="padding:8px; border-radius:5px; border:1px solid #ddd;">
+          <input type="number" id="m-estimate" placeholder="分" style="padding:8px; border-radius:5px; border:1px solid #ddd;">
+        </div>
+        <button type="submit" class="button" style="width:100%; margin-top:10px; font-size:0.8rem;">リストに保存</button>
+      </form>
+
+      <div id="master-list-container"></div>
+    </div>
+  </div>
+
+  <nav>
+    <div class="nav-item active-nav" onclick="showPage('top-page')"><div>🏠</div><span>トップ</span></div>
+    <div class="nav-item" onclick="showPage('timeline-page')"><div>⏳</div><span>24h</span></div>
+    <div class="nav-item" onclick="showPage('list-page')"><div>📋</div><span>リスト</span></div>
+  </nav>
+
+  <div id="toast"></div>
+
+  <script>
+    const KEY = "studyTodo_v6";
+    let state = {
+      user: "default",
+      masterTasks: [], // 全タスクのリスト
+      todayTasks: []   // タイムラインに選ばれたタスク
+    };
+    let timerInterval = null;
+    let activeTimerId = null;
+
+    function init() {
+      const now = new Date();
+      document.getElementById("date-display").textContent = `${now.getMonth()+1}月${now.getDate()}日`;
+      load();
+      bind();
+      render();
+    }
+
+    function load() {
+      const saved = localStorage.getItem(KEY);
+      if(saved) state = JSON.parse(saved);
+      document.getElementById("display-user").textContent = state.user;
+    }
+
+    function save() {
+      localStorage.setItem(KEY, JSON.stringify(state));
+    }
+
+    function bind() {
+      // リスト登録
+      document.getElementById("master-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        state.masterTasks.push({
+          id: "m" + Date.now(),
+          title: document.getElementById("m-title").value,
+          subject: document.getElementById("m-subject").value || "共通",
+          estimate: parseInt(document.getElementById("m-estimate").value) || 30
+        });
+        save(); render(); e.target.reset(); showToast("リストに登録しました");
+      });
+    }
+
+    // --- コア機能：リストからタイムラインへ追加 ---
+    function addToday(masterId) {
+      const mt = state.masterTasks.find(t => t.id === masterId);
+      const startTime = prompt(`${mt.title} の開始時間を入力してください`, "09:00");
+      if(!startTime) return;
+
+      state.todayTasks.push({
+        ...mt,
+        id: "t" + Date.now(),
+        startTime: startTime,
+        actualTime: 0,
+        status: "todo"
+      });
+      save(); render();
+      showToast("今日の予定に追加しました");
+    }
+
+    function render() {
+      renderTop();
+      renderTimeline();
+      renderMasterList();
+    }
+
+    function renderTop() {
+      const done = state.todayTasks.filter(t => t.status === "done").length;
+      const total = state.todayTasks.length;
+      const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+      const totalMinutes = state.todayTasks.reduce((sum, t) => sum + (t.actualTime || 0), 0);
+
+      document.getElementById("total-time-display").innerHTML = `${totalMinutes}<span style="font-size:1rem;">分</span>`;
+      document.getElementById("stats-text").textContent = `完了 ${done} / 予定 ${total} (${percent}%)`;
+      document.getElementById("progress-bar").style.width = `${percent}%`;
+    }
+
+    function renderTimeline() {
+      const container = document.getElementById("timeline-container");
+      const sorted = [...state.todayTasks].sort((a,b) => a.startTime.localeCompare(b.startTime));
+      
+      if(sorted.length === 0) {
+        container.innerHTML = "<p style='font-size:0.8rem; color:#94a3b8; text-align:center;'>リストからタスクを追加してください</p>";
+        return;
+      }
+
+      container.innerHTML = sorted.map(t => `
+        <div class="timeline-item">
+          <span class="timeline-time">${t.startTime}</span>
+          <div class="task-card">
+            <div class="task-card__main">
+              <input type="checkbox" ${t.status === "done" ? "checked" : ""} onchange="toggleTask('${t.id}')">
+              <span style="${t.status === "done" ? 'text-decoration:line-through;opacity:0.4' : 'font-weight:bold'}">${t.title}</span>
+            </div>
+            <div class="task-card__meta">
+              <span class="badge">${t.subject}</span>
+              <span>実:${t.actualTime}分</span>
+              <button class="btn-timer ${activeTimerId === t.id ? 'stop' : ''}" onclick="toggleTimer('${t.id}')">
+                ${activeTimerId === t.id ? '⏹️' : '▶️'}
+              </button>
+              <button onclick="deleteTodayTask('${t.id}')" style="margin-left:auto; border:none; background:none; color:#ccc; font-size:0.7rem;">削除</button>
+            </div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function renderMasterList() {
+      const container = document.getElementById("master-list-container");
+      container.innerHTML = state.masterTasks.map(t => `
+        <div class="task-card" style="border-left:4px solid #ddd;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div>
+              <div style="font-weight:bold;">${t.title}</div>
+              <div class="task-card__meta" style="margin-left:0;">
+                <span class="badge">${t.subject}</span>
+                <span>目安: ${t.estimate}分</span>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              <button class="btn-add-today" onclick="addToday('${t.id}')">＋ 今日の予定へ</button>
+              <button onclick="deleteMasterTask('${t.id}')" style="font-size:0.6rem; color:#f87171; background:none; border:none; text-align:right;">リストから消去</button>
+            </div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    // --- アクション ---
+    function toggleTimer(id) {
+      if(activeTimerId === id) {
+        clearInterval(timerInterval); activeTimerId = null;
+      } else {
+        if(activeTimerId) clearInterval(timerInterval);
+        activeTimerId = id;
+        timerInterval = setInterval(() => {
+          const t = state.todayTasks.find(x => x.id === id);
+          if(t) { t.actualTime++; save(); render(); }
+        }, 60000);
+      }
+      render();
+    }
+
+    function toggleTask(id) {
+      const t = state.todayTasks.find(x => x.id === id);
+      if(t) { t.status = t.status === "done" ? "todo" : "done"; save(); render(); }
+    }
+
+    function deleteMasterTask(id) {
+      if(confirm("リストから削除しますか？")) {
+        state.masterTasks = state.masterTasks.filter(t => t.id !== id);
+        save(); render();
+      }
+    }
+
+    function deleteTodayTask(id) {
+      state.todayTasks = state.todayTasks.filter(t => t.id !== id);
+      save(); render();
+    }
+
+    function clearTodayTasks() {
+      if(confirm("今日の予定をすべて消去しますか？")) {
+        state.todayTasks = []; save(); render();
+      }
+    }
+
+    function showPage(id) {
+      document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+      document.getElementById(id).classList.add("active");
+      document.querySelectorAll(".nav-item").forEach((n, i) => {
+        const pages = ['top-page', 'timeline-page', 'list-page'];
+        n.classList.toggle("active-nav", pages[i] === id);
+      });
+    }
+
+    function showToast(m) {
+      const t = document.getElementById("toast"); t.textContent = m;
+      t.classList.add("is-show"); setTimeout(() => t.classList.remove("is-show"), 2000);
+    }
+
+    init();
+  </script>
+</body>
+</html>
